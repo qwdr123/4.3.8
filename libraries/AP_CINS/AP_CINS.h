@@ -20,6 +20,15 @@ public:
         AP_Float gpspos_att;
         AP_Float gpsvel_att;
         AP_Float gps_lag;
+        AP_Float gps_pos;
+        AP_Float gps_vel;
+        AP_Float mag_att;
+        AP_Float Q11;
+        AP_Float Q22;
+        AP_Float gps_pos_bias;
+        AP_Float gps_vel_bias;
+        AP_Float mag_bias;
+        AP_Float sat_bias;
     } gains;
 
     Vector3f get_accel() const {
