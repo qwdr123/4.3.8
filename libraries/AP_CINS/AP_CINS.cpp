@@ -3,10 +3,8 @@
  */
 
 #include "AP_CINS.h"
-#include <AP_AHRS/AP_AHRS.h>
 #include <AP_DAL/AP_DAL.h>
 #include <AP_Logger/AP_Logger.h>
-#include <AP_Declination/AP_Declination.h>
 #include <GCS_MAVLink/GCS.h>
 
 // gains tested for 5Hz GPS
@@ -220,6 +218,7 @@ void AP_CINS::update(void)
     // @LoggerMessage: CINS
     // @Description: CINS state
     // @Field: TimeUS: Time since system startup
+    // @Field: I: instance
     // @Field: Roll: euler roll
     // @Field: Pitch: euler pitch
     // @Field: Yaw: euler yaw
@@ -236,11 +235,12 @@ void AP_CINS::update(void)
     state.XHat.rot().to_euler(&roll_rad, &pitch_rad, &yaw_rad);
     const Location loc = get_location();
 
-    AP::logger().WriteStreaming("CINS", "TimeUS,Roll,Pitch,Yaw,VN,VE,VD,PN,PE,PD,Lat,Lon,Alt",
-                                "sdddnnnmmmDUm",
-                                "F000000000GG0",
-                                "QfffffffffLLf",
-                                AP_HAL::micros64(),
+    AP::logger().WriteStreaming("CINS", "TimeUS,I,Roll,Pitch,Yaw,VN,VE,VD,PN,PE,PD,Lat,Lon,Alt",
+                                "s#dddnnnmmmDUm",
+                                "F-000000000GG0",
+                                "QBfffffffffLLf",
+                                dal.micros64(),
+                                DAL_CORE(0),
                                 degrees(roll_rad),
                                 degrees(pitch_rad),
                                 wrap_360(degrees(yaw_rad)),
@@ -257,6 +257,7 @@ void AP_CINS::update(void)
     // @LoggerMessage: CIN2
     // @Description: Extra CINS states
     // @Field: TimeUS: Time since system startup
+    // @Field: I: instance
     // @Field: GX: Gyro Bias X
     // @Field: GY: Gyro Bias Y
     // @Field: GZ: Gyro Bias Z
@@ -266,11 +267,12 @@ void AP_CINS::update(void)
     // @Field: APN: auxiliary position north
     // @Field: APE: auxiliary position east
     // @Field: APD: auxiliary position down
-    AP::logger().WriteStreaming("CIN2", "TimeUS,GX,GY,GZ,AVN,AVE,AVD,APN,APE,APD",
-                                "skkknnnmmm",
-                                "F000000000",
-                                "Qfffffffff",
-                                AP_HAL::micros64(),
+    AP::logger().WriteStreaming("CIN2", "TimeUS,I,GX,GY,GZ,AVN,AVE,AVD,APN,APE,APD",
+                                "s#kkknnnmmm",
+                                "F-000000000",
+                                "QBfffffffff",
+                                dal.micros64(),
+                                DAL_CORE(0),
                                 degrees(state.gyro_bias.x),
                                 degrees(state.gyro_bias.y),
                                 degrees(state.gyro_bias.z),
@@ -526,9 +528,8 @@ bool AP_CINS::get_compass_yaw(ftype &yaw_rad, ftype &dt)
     dt = (last_us - last_mag_us) * 1.0e-6;
     last_mag_us = last_us;
 
-    const Location loc = get_location();
-    const float declination_deg = AP_Declination::get_declination(loc.lat*1.0e-7, loc.lng*1.0e-7);
-    if (is_zero(declination_deg)) {
+    const float declination_rad = dal.compass().get_declination();
+    if (is_zero(declination_rad)) {
         // wait for declination
         return false;
     }
@@ -541,7 +542,7 @@ bool AP_CINS::get_compass_yaw(ftype &yaw_rad, ftype &dt)
 
     // return magnetic yaw
 
-    yaw_rad = wrap_PI(-atan2f(field.y,field.x) + radians(declination_deg));
+    yaw_rad = wrap_PI(-atan2f(field.y,field.x) + declination_rad);
 
     return true;
 }
