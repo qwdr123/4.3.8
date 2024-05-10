@@ -104,6 +104,9 @@ const AP_Param::GroupInfo AP_ExternalAHRS::var_info[] = {
 
 void AP_ExternalAHRS::init(void)
 {
+    if (backend != nullptr) {
+        return;
+    }
     if (rate.get() < 50) {
         // min 50Hz
         rate.set(50);
