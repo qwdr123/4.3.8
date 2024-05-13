@@ -8,22 +8,22 @@
 #include <GCS_MAVLink/GCS.h>
 
 // gains tested for 5Hz GPS
-#define CINS_GAIN_GPSPOS_ATT (1.0E-4)
+#define CINS_GAIN_GPSPOS_ATT (1.0E-5)
 #define CINS_GAIN_GPSVEL_ATT (1.0E-4)
 
 // Gains for new CINS method
-#define CINS_GAIN_GPSPOS_POS (10.0)
-#define CINS_GAIN_GPSVEL_VEL (10.0)
-#define CINS_GAIN_MAG (5.0)
-#define CINS_GAIN_Q11 (0.01)
+#define CINS_GAIN_GPSPOS_POS (5.0)
+#define CINS_GAIN_GPSVEL_VEL (5.0)
+#define CINS_GAIN_MAG (0.0)
+#define CINS_GAIN_Q11 (0.001)
 #define CINS_GAIN_Q22 (0.001)
 // Gains for the Bias
-#define CINS_GAIN_POS_BIAS (1E-6)
+#define CINS_GAIN_POS_BIAS (1E-7)
 #define CINS_GAIN_VEL_BIAS (1E-6)
-#define CINS_GAIN_MAG_BIAS (0.005)
-#define CINS_SAT_BIAS (0.0873) // 0.0873 rad/s is 5 deg/s
+#define CINS_GAIN_MAG_BIAS (0.0)//(0.005)
+#define CINS_SAT_BIAS (0.02) // 0.0873 rad/s is 5 deg/s
 // Naive GPS Time Delay settings
-#define CINS_GPS_DELAY (0.1) // seconds of delay
+#define CINS_GPS_DELAY (0.05) // seconds of delay
 
 
 // table of user settable parameters
