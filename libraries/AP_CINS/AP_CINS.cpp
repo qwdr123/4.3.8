@@ -25,6 +25,7 @@
 // Naive GPS Time Delay settings
 #define CINS_GPS_DELAY (0.05) // seconds of delay
 
+#pragma GCC diagnostic error "-Wframe-larger-than=8000"
 
 // table of user settable parameters
 const AP_Param::GroupInfo AP_CINS::var_info[] = {
@@ -691,9 +692,9 @@ void AP_CINS::compute_bias_update_imu(const SIM23& Gamma) {
     // Compute the bias update for IMU inputs
 
     const SIM23 GammaInv = Gamma.inverse();
-    const Matrix3F Ad_Gamma_11 = Gamma.R();
-    const Matrix3F Ad_Gamma_12{}; // Zero matrix
-    const Matrix3F Ad_Gamma_13{}; // Zero matrix
+    const Matrix3F& Ad_Gamma_11 = Gamma.R();
+    const Matrix3F Ad_Gamma_12; // Zero matrix
+    const Matrix3F Ad_Gamma_13; // Zero matrix
     const Matrix3F Ad_Gamma_21 = - Matrix3F::skew_symmetric(GammaInv.W1()) * Gamma.R();
     const Matrix3F Ad_Gamma_22 = Gamma.R() * GammaInv.A().a11();
     const Matrix3F Ad_Gamma_23 = Gamma.R() * GammaInv.A().a21();
@@ -701,9 +702,9 @@ void AP_CINS::compute_bias_update_imu(const SIM23& Gamma) {
     const Matrix3F Ad_Gamma_32 = Gamma.R() * GammaInv.A().a12();
     const Matrix3F Ad_Gamma_33 = Gamma.R() * GammaInv.A().a22();
 
-    const Matrix3F M1 = state.bias_gain_mat.rot;
-    const Matrix3F M2 = state.bias_gain_mat.vel;
-    const Matrix3F M3 = state.bias_gain_mat.pos;
+    const Matrix3F &M1 = state.bias_gain_mat.rot;
+    const Matrix3F &M2 = state.bias_gain_mat.vel;
+    const Matrix3F &M3 = state.bias_gain_mat.pos;
 
     // Implement M(t+) = A M(t)
     state.bias_gain_mat.rot = Ad_Gamma_11 * M1 + Ad_Gamma_12 * M2 + Ad_Gamma_13 * M3;
