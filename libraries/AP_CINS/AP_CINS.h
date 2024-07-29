@@ -87,12 +87,20 @@ private:
         SIM23 ZHat; // Auxiliary state for estimator maths
 
         // Gyro Bias
-        Vector3F gyro_bias;
+        Vector3F gyr_bias;
         struct {
             Matrix3F rot;
             Matrix3F vel;
             Matrix3F pos;
-        } bias_gain_mat;
+        } gyr_bias_gain_mat;
+
+        // Accel Bias
+        Vector3F acc_bias;
+        struct {
+            Matrix3F rot;
+            Matrix3F vel;
+            Matrix3F pos;
+        } acc_bias_gain_mat;
     } state;
 
     // buffers for storing old position and velocity data with timestamps.

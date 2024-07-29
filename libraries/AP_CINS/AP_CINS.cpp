@@ -136,10 +136,15 @@ void AP_CINS::init(void)
     state.XHat = Gal3F::identity();
     state.ZHat = SIM23::identity();
 
-    state.gyro_bias.zero();
-    state.bias_gain_mat.rot.zero();
-    state.bias_gain_mat.vel.zero();
-    state.bias_gain_mat.pos.zero();
+    state.gyr_bias.zero();
+    state.gyr_bias_gain_mat.rot.zero();
+    state.gyr_bias_gain_mat.vel.zero();
+    state.gyr_bias_gain_mat.pos.zero();
+
+    state.acc_bias.zero();
+    state.acc_bias_gain_mat.rot.zero();
+    state.acc_bias_gain_mat.vel.zero();
+    state.acc_bias_gain_mat.pos.zero();
 }
 /*
   update function, called at loop rate
@@ -262,21 +267,27 @@ void AP_CINS::update(void)
     // @Field: GX: Gyro Bias X
     // @Field: GY: Gyro Bias Y
     // @Field: GZ: Gyro Bias Z
+    // @Field: AX: Accel Bias X
+    // @Field: AY: Accel Bias Y
+    // @Field: AZ: Accel Bias Z
     // @Field: AVN: auxiliary velocity north
     // @Field: AVE: auxiliary velocity east
     // @Field: AVD: auxiliary velocity down
     // @Field: APN: auxiliary position north
     // @Field: APE: auxiliary position east
     // @Field: APD: auxiliary position down
-    AP::logger().WriteStreaming("CIN2", "TimeUS,I,GX,GY,GZ,AVN,AVE,AVD,APN,APE,APD",
-                                "s#kkknnnmmm",
-                                "F-000000000",
-                                "QBfffffffff",
+    AP::logger().WriteStreaming("CIN2", "TimeUS,I,GX,GY,GZ,AX,AY,AZ,AVN,AVE,AVD,APN,APE,APD",
+                                "s#kkkooonnnmmm",
+                                "F-000000000000",
+                                "QBffffffffffff",
                                 dal.micros64(),
                                 DAL_CORE(0),
-                                degrees(state.gyro_bias.x),
-                                degrees(state.gyro_bias.y),
-                                degrees(state.gyro_bias.z),
+                                degrees(state.gyr_bias.x),
+                                degrees(state.gyr_bias.y),
+                                degrees(state.gyr_bias.z),
+                                state.acc_bias.x,
+                                state.acc_bias.y,
+                                state.acc_bias.z,
                                 state.ZHat.W1().x,
                                 state.ZHat.W1().y,
                                 state.ZHat.W1().z,
@@ -337,13 +348,13 @@ void AP_CINS::update_imu(const Vector3F &gyro_rads, const Vector3F &accel_mss, c
     // Here, we split B into its parts and add them to the parts of the bias gain matrix.
     if (done_yaw_init) {
         const SIM23 XInv_Z = SIM23(state.XHat.inverse()) * state.ZHat;
-        state.bias_gain_mat.rot += -state.XHat.rot() * dt;
-        state.bias_gain_mat.vel += Matrix3F::skew_symmetric(XInv_Z.W1()) * XInv_Z.R().transposed() * dt;
-        state.bias_gain_mat.pos += Matrix3F::skew_symmetric(XInv_Z.W2()) * XInv_Z.R().transposed() * dt;
+        state.gyr_bias_gain_mat.rot += -state.XHat.rot() * dt;
+        state.gyr_bias_gain_mat.vel += Matrix3F::skew_symmetric(XInv_Z.W1()) * XInv_Z.R().transposed() * dt;
+        state.gyr_bias_gain_mat.pos += Matrix3F::skew_symmetric(XInv_Z.W2()) * XInv_Z.R().transposed() * dt;
     }
 
     const Gal3F leftMat = Gal3F::exponential(zero_vector, zero_vector, gravity_vector*dt, -dt);
-    const Gal3F rightMat = Gal3F::exponential((gyro_rads-state.gyro_bias)*dt, zero_vector, accel_mss*dt, dt);
+    const Gal3F rightMat = Gal3F::exponential((gyro_rads-state.gyr_bias)*dt, zero_vector, accel_mss*dt, dt);
     //Update XHat (Observer Dynamics)
     state.XHat = leftMat * state.XHat * rightMat;
 
@@ -387,11 +398,11 @@ void AP_CINS::update_states_gps(const Vector3F &pos_tru, const Vector3F &vel_tru
 
     // Compute the bias correction
     const Vector3F bias_correction = compute_bias_update_gps(Gamma_inv.inverse(), pos_tru, vel_tru, gps_dt);
-    state.gyro_bias += bias_correction * gps_dt;
+    state.gyr_bias += bias_correction * gps_dt;
     const Gal3F Delta_bias(
-        Matrix3F::from_angular_velocity(-state.bias_gain_mat.rot * bias_correction * gps_dt),
-        -state.bias_gain_mat.pos * bias_correction * gps_dt,
-        -state.bias_gain_mat.vel * bias_correction * gps_dt,
+        Matrix3F::from_angular_velocity(-state.gyr_bias_gain_mat.rot * bias_correction * gps_dt),
+        -state.gyr_bias_gain_mat.pos * bias_correction * gps_dt,
+        -state.gyr_bias_gain_mat.vel * bias_correction * gps_dt,
         0.
     );
 
@@ -472,10 +483,10 @@ void AP_CINS::update_states_gps_cts(const Vector3F &pos_tru, const Vector3F &vel
 
     // Add the bias correction
     const Vector3F bias_correction = compute_bias_update_gps(Gamma_inv.inverse(), pos_tru, vel_tru, gps_dt);
-    state.gyro_bias += bias_correction * gps_dt;
-    Omega_Delta += state.bias_gain_mat.rot * bias_correction;
-    W_Delta1 += state.bias_gain_mat.pos * bias_correction;
-    W_Delta2 += state.bias_gain_mat.vel * bias_correction;
+    state.gyr_bias += bias_correction * gps_dt;
+    Omega_Delta += state.gyr_bias_gain_mat.rot * bias_correction;
+    W_Delta1 += state.gyr_bias_gain_mat.pos * bias_correction;
+    W_Delta2 += state.gyr_bias_gain_mat.vel * bias_correction;
 
     // Construct the correction term Delta
     SIM23 Delta_SIM23 = SIM23(Matrix3F::from_angular_velocity(Omega_Delta*gps_dt), W_Delta1*gps_dt, W_Delta2*gps_dt, GL2::identity());
@@ -595,10 +606,10 @@ void AP_CINS::update_attitude_from_compass() {
 
     // Add the bias correction
     const Vector3F bias_correction = compute_bias_update_compass(mag_vec, mag_ref, dt);
-    state.gyro_bias += bias_correction * dt;
-    Omega_Delta += state.bias_gain_mat.rot * bias_correction;
-    const Vector3F W_Delta1 = state.bias_gain_mat.pos * bias_correction;
-    const Vector3F W_Delta2 = state.bias_gain_mat.vel * bias_correction;
+    state.gyr_bias += bias_correction * dt;
+    Omega_Delta += state.gyr_bias_gain_mat.rot * bias_correction;
+    const Vector3F W_Delta1 = state.gyr_bias_gain_mat.pos * bias_correction;
+    const Vector3F W_Delta2 = state.gyr_bias_gain_mat.vel * bias_correction;
 
     Matrix3F R_Delta = Matrix3F::from_angular_velocity(Omega_Delta*dt);
 
@@ -657,12 +668,12 @@ Vector3F AP_CINS::compute_bias_update_gps(const SIM23& Gamma, const Vector3F& po
 
     // Compute the bias correction using the C matrices.
     // The correction to bias is given by the formula delta_b = k_b (MC)^\top (y-\hat{y})
-    const Matrix3F M1 = state.bias_gain_mat.rot;
-    const Matrix3F M2 = state.bias_gain_mat.vel;
-    const Matrix3F M3 = state.bias_gain_mat.pos;
+    const Matrix3F M1Gyr = state.gyr_bias_gain_mat.rot;
+    const Matrix3F M2Gyr = state.gyr_bias_gain_mat.vel;
+    const Matrix3F M3Gyr = state.gyr_bias_gain_mat.pos;
 
-    Vector3F bias_correction = (C11*M1 + C12*M2 + C13*M3).mul_transpose(pos_tru - state.XHat.pos()) * gains.gps_pos_bias
-                                   + (C21*M1 + C22*M2 + C23*M3).mul_transpose(vel_tru - state.XHat.vel()) * gains.gps_vel_bias;
+    Vector3F bias_correction = (C11*M1Gyr + C12*M2Gyr + C13*M3Gyr).mul_transpose(pos_tru - state.XHat.pos()) * gains.gps_pos_bias
+                                   + (C21*M1Gyr + C22*M2Gyr + C23*M3Gyr).mul_transpose(vel_tru - state.XHat.vel()) * gains.gps_vel_bias;
     saturate_bias(bias_correction, dt);
 
     // Compute the bias gain matrix updates
@@ -680,9 +691,9 @@ Vector3F AP_CINS::compute_bias_update_gps(const SIM23& Gamma, const Vector3F& po
     const Matrix3F A32 = Gamma.R() * GammaInv.A().a12();
     const Matrix3F A33 = Gamma.R() * GammaInv.A().a22();
 
-    state.bias_gain_mat.rot = (A11 - K11 * C11 - K12 * C21) * M1 + (A12 - K11 * C12 - K12 * C22) * M2 + (A13 - K11 * C13 - K12 * C23) * M3;
-    state.bias_gain_mat.vel = (A21 - K21 * C11 - K22 * C21) * M1 + (A22 - K21 * C12 - K22 * C22) * M2 + (A23 - K21 * C13 - K22 * C23) * M3;
-    state.bias_gain_mat.pos = (A31 - K31 * C11 - K32 * C21) * M1 + (A32 - K31 * C12 - K32 * C22) * M2 + (A33 - K31 * C13 - K32 * C23) * M3;
+    state.gyr_bias_gain_mat.rot = (A11 - K11 * C11 - K12 * C21) * M1Gyr + (A12 - K11 * C12 - K12 * C22) * M2Gyr + (A13 - K11 * C13 - K12 * C23) * M3Gyr;
+    state.gyr_bias_gain_mat.vel = (A21 - K21 * C11 - K22 * C21) * M1Gyr + (A22 - K21 * C12 - K22 * C22) * M2Gyr + (A23 - K21 * C13 - K22 * C23) * M3Gyr;
+    state.gyr_bias_gain_mat.pos = (A31 - K31 * C11 - K32 * C21) * M1Gyr + (A32 - K31 * C12 - K32 * C22) * M2Gyr + (A33 - K31 * C13 - K32 * C23) * M3Gyr;
 
     return bias_correction;
 }
@@ -702,14 +713,14 @@ void AP_CINS::compute_bias_update_imu(const SIM23& Gamma) {
     const Matrix3F Ad_Gamma_32 = Gamma.R() * GammaInv.A().a12();
     const Matrix3F Ad_Gamma_33 = Gamma.R() * GammaInv.A().a22();
 
-    const Matrix3F &M1 = state.bias_gain_mat.rot;
-    const Matrix3F &M2 = state.bias_gain_mat.vel;
-    const Matrix3F &M3 = state.bias_gain_mat.pos;
+    const Matrix3F &M1Gyr = state.gyr_bias_gain_mat.rot;
+    const Matrix3F &M2Gyr = state.gyr_bias_gain_mat.vel;
+    const Matrix3F &M3Gyr = state.gyr_bias_gain_mat.pos;
 
     // Implement M(t+) = A M(t)
-    state.bias_gain_mat.rot = Ad_Gamma_11 * M1 + Ad_Gamma_12 * M2 + Ad_Gamma_13 * M3;
-    state.bias_gain_mat.vel = Ad_Gamma_21 * M1 + Ad_Gamma_22 * M2 + Ad_Gamma_23 * M3;
-    state.bias_gain_mat.pos = Ad_Gamma_31 * M1 + Ad_Gamma_32 * M2 + Ad_Gamma_33 * M3;
+    state.gyr_bias_gain_mat.rot = Ad_Gamma_11 * M1Gyr + Ad_Gamma_12 * M2Gyr + Ad_Gamma_13 * M3Gyr;
+    state.gyr_bias_gain_mat.vel = Ad_Gamma_21 * M1Gyr + Ad_Gamma_22 * M2Gyr + Ad_Gamma_23 * M3Gyr;
+    state.gyr_bias_gain_mat.pos = Ad_Gamma_31 * M1Gyr + Ad_Gamma_32 * M2Gyr + Ad_Gamma_33 * M3Gyr;
 }
 
 
@@ -727,8 +738,8 @@ Vector3F AP_CINS::compute_bias_update_compass(const Vector3F& mag_tru, const Vec
 
     // Implement delta_b = k_b M^T C^T (y-\hat{y})
 
-    const Matrix3F M1 = state.bias_gain_mat.rot;
-    Vector3F bias_correction = (C11*M1).mul_transpose(yTilde_m) * gains.mag_bias;
+    const Matrix3F M1Gyr = state.gyr_bias_gain_mat.rot;
+    Vector3F bias_correction = (C11*M1Gyr).mul_transpose(yTilde_m) * gains.mag_bias;
     saturate_bias(bias_correction, dt);
 
 
@@ -741,9 +752,9 @@ Vector3F AP_CINS::compute_bias_update_compass(const Vector3F& mag_tru, const Vec
     // const Matrix3F exp_minus_KC = I3 + minus_KC * dt + minus_KC*minus_KC *(0.5*dt*dt) + minus_KC*minus_KC*minus_KC *(1./6.*dt*dt*dt);
 
     // Implement M(t+) = exp(-dt * KC)M(t). K21, K31 are zero matrices
-    // state.bias_gain_mat.rot = exp_minus_KC * M1;
-    state.bias_gain_mat.rot += (- K11 * C11) * M1;
-    // state.bias_gain_mat.rot = (- K11 * C11) * M1;
+    // state.bias_gain_mat.rot = exp_minus_KC * M1Gyr;
+    state.gyr_bias_gain_mat.rot += (- K11 * C11) * M1Gyr;
+    // state.bias_gain_mat.rot = (- K11 * C11) * M1Gyr;
 
     return bias_correction;
 }
@@ -751,11 +762,11 @@ Vector3F AP_CINS::compute_bias_update_compass(const Vector3F& mag_tru, const Vec
 void AP_CINS::saturate_bias(Vector3F& bias_correction, const ftype& dt) const {
     // Ensure that no part of the bias exceeds the saturation limit
     if (abs(bias_correction.x) > 1E-8)
-        bias_correction.x *= MIN(1., (gains.sat_bias - abs(state.gyro_bias.x)) / (dt * abs(bias_correction.x)));
+        bias_correction.x *= MIN(1., (gains.sat_bias - abs(state.gyr_bias.x)) / (dt * abs(bias_correction.x)));
     if (abs(bias_correction.y) > 1E-8)
-        bias_correction.y *= MIN(1., (gains.sat_bias - abs(state.gyro_bias.y)) / (dt * abs(bias_correction.y)));
+        bias_correction.y *= MIN(1., (gains.sat_bias - abs(state.gyr_bias.y)) / (dt * abs(bias_correction.y)));
     if (abs(bias_correction.z) > 1E-8)
-        bias_correction.z *= MIN(1., (gains.sat_bias - abs(state.gyro_bias.z)) / (dt * abs(bias_correction.z)));
+        bias_correction.z *= MIN(1., (gains.sat_bias - abs(state.gyr_bias.z)) / (dt * abs(bias_correction.z)));
 }
 
 
