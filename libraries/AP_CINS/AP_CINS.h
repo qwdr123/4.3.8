@@ -25,10 +25,14 @@ public:
         AP_Float mag_att;
         AP_Float Q11;
         AP_Float Q22;
-        AP_Float gps_pos_bias;
-        AP_Float gps_vel_bias;
-        AP_Float mag_bias;
-        AP_Float sat_bias;
+        AP_Float gps_pos_gyr_bias;
+        AP_Float gps_vel_gyr_bias;
+        AP_Float mag_gyr_bias;
+        AP_Float sat_gyr_bias;
+        AP_Float gps_pos_acc_bias;
+        AP_Float gps_vel_acc_bias;
+        AP_Float mag_acc_bias;
+        AP_Float sat_acc_bias;
     } gains;
 
     Vector3f get_accel() const {
@@ -71,10 +75,10 @@ private:
     bool get_compass_yaw(ftype &yaw_rad, ftype &dt);
     bool get_compass_vector(Vector3F &mag_vec, Vector3F &mag_ref, ftype &dt);
 
-    Vector3F compute_bias_update_gps(const SIM23& Gamma, const Vector3F& pos_tru, const Vector3F& vel_tru, const ftype& dt);
-    Vector3F compute_bias_update_compass(const Vector3F& mag_tru, const Vector3F& mag_ref, const ftype& dt);
+    void compute_bias_update_gps(const SIM23& Gamma, const Vector3F& pos_tru, const Vector3F& vel_tru, const ftype& dt);
+    void compute_bias_update_compass(const Vector3F& mag_tru, const Vector3F& mag_ref, const ftype& dt);
     void compute_bias_update_imu(const SIM23& Gamma);
-    void saturate_bias(Vector3F& bias_correction, const ftype& dt) const;
+    void saturate_bias(Vector3F& bias_correction, const Vector3F& current_bias, const ftype& saturation, const ftype& dt) const;
 
     struct {
         Vector3F accel;
@@ -88,6 +92,7 @@ private:
 
         // Gyro Bias
         Vector3F gyr_bias;
+        Vector3F gyr_bias_correction;
         struct {
             Matrix3F rot;
             Matrix3F vel;
@@ -96,6 +101,7 @@ private:
 
         // Accel Bias
         Vector3F acc_bias;
+        Vector3F acc_bias_correction;
         struct {
             Matrix3F rot;
             Matrix3F vel;
