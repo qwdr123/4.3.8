@@ -22,7 +22,7 @@
 #define CINS_GAIN_VEL_GYR_BIAS (1E-6)
 #define CINS_GAIN_MAG_GYR_BIAS (0.0)//(0.005)
 #define CINS_SAT_GYR_BIAS (0.02) // 0.0873 rad/s is 5 deg/s
-#define CINS_GAIN_POS_ACC_BIAS (1E-4)
+#define CINS_GAIN_POS_ACC_BIAS (1E-3)
 #define CINS_GAIN_VEL_ACC_BIAS (1E-3)
 #define CINS_GAIN_MAG_ACC_BIAS (0.0)//(0.005)
 #define CINS_SAT_ACC_BIAS (0.5)
@@ -386,12 +386,12 @@ void AP_CINS::update_imu(const Vector3F &gyro_rads, const Vector3F &accel_mss, c
         state.gyr_bias_gain_mat.pos += Matrix3F::skew_symmetric(XInv_Z.W2()) * XInv_Z.R().transposed() * dt;
 
         // state.acc_bias_gain_mat.rot is unchanged
-        state.acc_bias_gain_mat.vel += state.XHat.rot() * state.ZHat.A().a11() * dt;
-        state.acc_bias_gain_mat.pos += state.XHat.rot() * state.ZHat.A().a12() * dt;
+        state.acc_bias_gain_mat.vel += -state.XHat.rot() * state.ZHat.A().a11() * dt;
+        state.acc_bias_gain_mat.pos += -state.XHat.rot() * state.ZHat.A().a12() * dt;
     }
 
     const Gal3F leftMat = Gal3F::exponential(zero_vector, zero_vector, gravity_vector*dt, -dt);
-    const Gal3F rightMat = Gal3F::exponential((gyro_rads-state.gyr_bias)*dt, zero_vector, accel_mss*dt, dt);
+    const Gal3F rightMat = Gal3F::exponential((gyro_rads-state.gyr_bias)*dt, zero_vector, (accel_mss-state.acc_bias)*dt, dt);
     //Update XHat (Observer Dynamics)
     state.XHat = leftMat * state.XHat * rightMat;
 
@@ -438,9 +438,9 @@ void AP_CINS::update_states_gps(const Vector3F &pos_tru, const Vector3F &vel_tru
     state.gyr_bias += state.gyr_bias_correction * gps_dt;
     state.acc_bias += state.acc_bias_correction * gps_dt;
     const Gal3F Delta_bias(
-        Matrix3F::from_angular_velocity(-state.gyr_bias_gain_mat.rot * state.gyr_bias_correction * gps_dt - state.acc_bias_gain_mat.rot * state.acc_bias_correction * gps_dt),
-        -state.gyr_bias_gain_mat.pos * state.gyr_bias_correction * gps_dt -state.acc_bias_gain_mat.pos * state.acc_bias_correction * gps_dt,
-        -state.gyr_bias_gain_mat.vel * state.gyr_bias_correction * gps_dt -state.acc_bias_gain_mat.vel * state.acc_bias_correction * gps_dt,
+        Matrix3F::from_angular_velocity(state.gyr_bias_gain_mat.rot * state.gyr_bias_correction * gps_dt + state.acc_bias_gain_mat.rot * state.acc_bias_correction * gps_dt),
+        state.gyr_bias_gain_mat.pos * state.gyr_bias_correction * gps_dt + state.acc_bias_gain_mat.pos * state.acc_bias_correction * gps_dt,
+        state.gyr_bias_gain_mat.vel * state.gyr_bias_correction * gps_dt + state.acc_bias_gain_mat.vel * state.acc_bias_correction * gps_dt,
         0.
     );
 
