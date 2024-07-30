@@ -1346,7 +1346,6 @@ class AutoTestQuadPlane(vehicle_test_suite.TestSuite):
 
         self.wait_disarmed(timeout=120)
 
-
     def VTOLQuicktune_CPP(self):
         '''VTOL Quicktune in C++'''
         self.set_parameters({
@@ -1383,7 +1382,7 @@ class AutoTestQuadPlane(vehicle_test_suite.TestSuite):
         self.set_parameter("QUIK_ENABLE", 0)
         self.context_pop()
         self.reboot_sitl()
-        
+
     def PrecisionLanding(self):
         '''VTOL precision landing'''
 
