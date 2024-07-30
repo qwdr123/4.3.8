@@ -12,8 +12,8 @@
 #define CINS_GAIN_GPSVEL_ATT (1.0E-4)
 
 // Gains for new CINS method
-#define CINS_GAIN_GPSPOS_POS (5.0)
-#define CINS_GAIN_GPSVEL_VEL (5.0)
+#define CINS_GAIN_GPSPOS_POS (10.0)
+#define CINS_GAIN_GPSVEL_VEL (10.0)
 #define CINS_GAIN_MAG (0.0)//(0.5)
 #define CINS_GAIN_Q11 (0.001)
 #define CINS_GAIN_Q22 (0.001)
@@ -178,6 +178,9 @@ void AP_CINS::init(void)
     state.acc_bias_gain_mat.rot.zero();
     state.acc_bias_gain_mat.vel.zero();
     state.acc_bias_gain_mat.pos.zero();
+
+    delayer.YR = Gal3F::identity();
+    delayer.YR_stepper = Gal3F::identity();
 }
 /*
   update function, called at loop rate
@@ -336,16 +339,21 @@ void AP_CINS::update(void)
 void AP_CINS::update_gps(const Vector3F &pos, const Vector3F &vel, const ftype gps_dt)
 {
     // Forward the GPS to the current time
-    const Vector3F undelayed_pos = buffers.stamped_pos.empty() && gains.gps_lag > 0. ? pos : pos + state.XHat.pos() - buffers.stamped_pos.back().second;
-    const Vector3F undelayed_vel = buffers.stamped_vel.empty() && gains.gps_lag > 0. ? vel : vel + state.XHat.vel() - buffers.stamped_vel.back().second;
+    // const Vector3F undelayed_pos = buffers.stamped_pos.empty() && gains.gps_lag > 0. ? pos : pos + state.XHat.pos() - buffers.stamped_pos.back().second;
+    // const Vector3F undelayed_vel = buffers.stamped_vel.empty() && gains.gps_lag > 0. ? vel : vel + state.XHat.vel() - buffers.stamped_vel.back().second;
 
+    // Update delay buffers
+    delayer.YR = delayer.YR_stepper.inverse() * delayer.YR;
+    delayer.YR_stepper = Gal3F::identity();
+    delayer.gps_vel = vel;
+    delayer.gps_pos = pos;
+
+    // TODO: move GPS update to IMU update using delay matrices.
 
     //compute correction terms 
-    const Vector3F zero_vector;
-    // update_states_gps_cts(undelayed_pos, undelayed_vel, gps_dt);
-    update_vector_measurement_cts(undelayed_vel, zero_vector, Vector2F(1,0), gains.gpsvel_att, gains.gps_vel, gains.gps_vel_gyr_bias, gains.gps_vel_acc_bias, gps_dt);
-    update_vector_measurement_cts(undelayed_pos, zero_vector, Vector2F(0,1), gains.gpspos_att, gains.gps_pos, gains.gps_pos_gyr_bias, gains.gps_pos_acc_bias, gps_dt);
-    // update_states_gps(pos, vel, gps_dt);
+    // const Vector3F zero_vector;
+    // update_vector_measurement_cts(undelayed_vel, zero_vector, Vector2F(1,0), gains.gpsvel_att, gains.gps_vel, gains.gps_vel_gyr_bias, gains.gps_vel_acc_bias, gps_dt);
+    // update_vector_measurement_cts(undelayed_pos, zero_vector, Vector2F(0,1), gains.gpspos_att, gains.gps_pos, gains.gps_pos_gyr_bias, gains.gps_pos_acc_bias, gps_dt);
 
     // use AHRS3 for debugging
     ftype roll_rad, pitch_rad, yaw_rad;
@@ -407,6 +415,27 @@ void AP_CINS::update_imu(const Vector3F &gyro_rads, const Vector3F &accel_mss, c
     compute_bias_update_imu(Gamma_IMU_inv.inverse());
 
     state.ZHat = SIM23(leftMat) * state.ZHat * Gamma_IMU_inv;
+
+    // Update the delay matrices and buffer
+    delayer.YR = delayer.YR * rightMat;
+    delayer.internal_time += dt;
+    delayer.stamped_inputs.push_front({delayer.internal_time, rightMat});
+    while (!delayer.stamped_inputs.empty() && delayer.stamped_inputs.back().first < delayer.internal_time - gains.gps_lag){
+        delayer.YR_stepper = delayer.YR_stepper * delayer.stamped_inputs.back().second;
+        delayer.stamped_inputs.pop_back();
+    }
+
+    // Update using delayed GPS
+    const Vector3F mu_vel = delayer.gps_vel + gravity_vector*gains.gps_lag;
+    const Vector3F& mu0_vel = delayer.YR.vel();
+    const Vector2F& ref_vel = Vector2F(1., 0.);
+    update_vector_measurement_cts(mu_vel, mu0_vel, ref_vel, gains.gpsvel_att, gains.gps_vel, gains.gps_vel_gyr_bias, gains.gps_vel_acc_bias, dt);
+
+    const Vector3F mu_pos = delayer.gps_pos + gravity_vector*0.5*gains.gps_lag*gains.gps_lag;
+    const Vector3F& mu0_pos = delayer.YR.pos();
+    const Vector2F& ref_pos = Vector2F(-gains.gps_lag, 1.);
+    update_vector_measurement_cts(mu_pos, mu0_pos, ref_pos, gains.gpspos_att, gains.gps_pos, gains.gps_pos_gyr_bias, gains.gps_pos_acc_bias, dt);
+
 }
 
 void AP_CINS::update_vector_measurement_cts(const Vector3F &measurement, const Vector3F& reference, const Vector2F &ref_base, const ftype& gain_R, const ftype& gain_V, const ftype& gain_gyr_bias, const ftype& gain_acc_bias, const ftype dt) {

@@ -114,6 +114,15 @@ private:
         std::deque<std::pair<ftype,Vector3F>> stamped_vel;
     } buffers;
 
+    struct {
+        ftype internal_time = 0.;
+        std::deque<std::pair<ftype,Gal3F>> stamped_inputs;
+        Vector3F gps_vel;
+        Vector3F gps_pos;
+        Gal3F YR; // Primary right delay matrix
+        Gal3F YR_stepper; // right delay matrix to apply at new GPS measurement.
+    } delayer;
+
     uint32_t last_gps_update_ms;
     bool done_yaw_init;
     uint32_t last_mag_us;
