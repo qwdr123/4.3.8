@@ -70,6 +70,7 @@ private:
     void update_gps(const Vector3F &pos, const Vector3F &vel, const ftype gps_dt);
     void update_states_gps(const Vector3F &pos, const Vector3F &vel, const ftype dt);
     void update_states_gps_cts(const Vector3F &pos, const Vector3F &vel, const ftype dt);
+    void update_vector_measurement_cts(const Vector3F &measurement, const Vector3F& reference, const Vector2F &ref_base, const ftype& gain_R, const ftype& gain_V, const ftype dt);
     void update_attitude_from_compass();
     bool init_yaw(void);
     bool get_compass_yaw(ftype &yaw_rad, ftype &dt);

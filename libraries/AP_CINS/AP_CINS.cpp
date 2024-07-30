@@ -537,6 +537,111 @@ void AP_CINS::update_states_gps_cts(const Vector3F &pos_tru, const Vector3F &vel
     state.ZHat = state.ZHat * Gamma_inv;
 }
 
+void AP_CINS::update_vector_measurement_cts(const Vector3F &measurement, const Vector3F& reference, const Vector2F &ref_base, const ftype& gain_R, const ftype& gain_V, const ftype dt) {
+    // Compute and apply an update for an arbitrary vector-type measurement.
+    // The measurement is of the form $\mu = R \mu_0 + V C$, where
+    // \mu is the measured value
+    // \mu_0 is a reference vector (e.g. zero for GPS and 'north' for magnetometer)
+    // C is a the reference vector 'base' (e.g. zero for magnetometer and (1,0) or (0,1) for GPS vel. or pos.)
+    // The update equations are then drawn from Lemma 5.3 in
+    // van Goor, Pieter, et al. "Constructive synchronous observer design for inertial navigation with delayed GNSS measurements." European Journal of Control (2024): 101047.
+
+    // Set up some computation variables
+    const Vector3F& muHat = state.XHat.rot() * reference + state.XHat.vel()*ref_base.x + state.XHat.pos()*ref_base.y;
+    const SIM23& ZInv = state.ZHat.inverse();
+    const Vector2F& gains_AInvC = ZInv.A() * ref_base;
+    const GL2& CCT = GL2(ref_base.x*ref_base.x, ref_base.x*ref_base.y, ref_base.x*ref_base.y, ref_base.y*ref_base.y);
+    const Vector3F& mu_Z = state.ZHat.W1()*gains_AInvC.x + state.ZHat.W2()*gains_AInvC.y;
+
+    // Compute correction terms
+    Matrix3F I3; I3.identity();
+    const GL2& S_Gamma = -0.5 * (gain_V) * ZInv.A() * CCT * ZInv.A().transposed();
+    const Vector3F& W_Gamma_1 = - (measurement - mu_Z) * gains_AInvC.x * (gain_R+gain_V);
+    const Vector3F& W_Gamma_2 = - (measurement - mu_Z) * gains_AInvC.y * (gain_R+gain_V);
+    const SIM23 GammaInv = SIM23(I3, -W_Gamma_1*dt, -W_Gamma_2*dt, GL2::identity() - dt*S_Gamma);
+
+    Vector3F Omega_Delta = computeRotationCorrection((muHat - mu_Z), -(measurement - mu_Z), 4.*gain_R, dt);
+    Vector3F W_Delta1 = (measurement - muHat) * gains_AInvC.x * (gain_R + gain_V);
+    Vector3F W_Delta2 = (measurement - muHat) * gains_AInvC.y * (gain_R + gain_V);
+
+    // Compute the bias correction
+
+    // Construct the components of the 9x9 Adjoint matrix $\Ad_Z$
+    const Matrix3F& AdZ_11 = state.ZHat.R();
+    const Matrix3F& AdZ_12{}; // Zero matrix
+    const Matrix3F& AdZ_13{}; // Zero matrix
+    const Matrix3F& AdZ_21 = - Matrix3F::skew_symmetric(ZInv.W1());
+    const Matrix3F& AdZ_22 = state.ZHat.R() * ZInv.A().a11();
+    const Matrix3F& AdZ_23 = state.ZHat.R() * ZInv.A().a21();
+    const Matrix3F& AdZ_31 = - Matrix3F::skew_symmetric(ZInv.W2());
+    const Matrix3F& AdZ_32 = state.ZHat.R() * ZInv.A().a12();
+    const Matrix3F& AdZ_33 = state.ZHat.R() * ZInv.A().a22();
+
+    // Linearised measurement matrix $\mu - \hat{\mu} = Dh DR_{\hat{X}} \Ad_Z \varepsilon$.
+    const Matrix3F& pre_C11 = - Matrix3F::skew_symmetric(muHat);
+    const Matrix3F& pre_C12 = I3*ref_base.x;
+    const Matrix3F& pre_C13 = I3*ref_base.y;
+
+    const Matrix3F& C11 = pre_C11 * AdZ_11 + pre_C12 * AdZ_21 + pre_C13 * AdZ_31;
+    const Matrix3F& C12 = pre_C11 * AdZ_12 + pre_C12 * AdZ_22 + pre_C13 * AdZ_32;
+    const Matrix3F& C13 = pre_C11 * AdZ_13 + pre_C12 * AdZ_23 + pre_C13 * AdZ_33;
+
+    // Gain matrix $\Delta = K (\mu - \hat{\mu})$.
+    const Matrix3F& K11 = Matrix3F::skew_symmetric(muHat - mu_Z) * 4. * gain_R * dt;
+    const Matrix3F& K21 = I3 * gains_AInvC.x * (gain_R + gain_V) * dt;
+    const Matrix3F& K31 = I3 * gains_AInvC.y * (gain_R + gain_V) * dt;
+
+    // Compute the bias correction using the C matrices.
+    // The correction to bias is given by the formula delta_b = k_b (MC)^\top (y-\hat{y})
+    const Matrix3F M1Gyr = state.gyr_bias_gain_mat.rot;
+    const Matrix3F M2Gyr = state.gyr_bias_gain_mat.vel;
+    const Matrix3F M3Gyr = state.gyr_bias_gain_mat.pos;
+
+    const Matrix3F M1Acc = state.acc_bias_gain_mat.rot;
+    const Matrix3F M2Acc = state.acc_bias_gain_mat.vel;
+    const Matrix3F M3Acc = state.acc_bias_gain_mat.pos;
+
+    state.gyr_bias_correction = (C11*M1Gyr + C12*M2Gyr + C13*M3Gyr).mul_transpose(measurement - muHat) * gains.gps_pos_gyr_bias;
+    state.acc_bias_correction = (C11*M1Acc + C12*M2Acc + C13*M3Acc).mul_transpose(measurement - muHat) * gains.gps_pos_acc_bias;
+    saturate_bias(state.gyr_bias_correction, state.gyr_bias, gains.sat_gyr_bias, dt);
+    saturate_bias(state.acc_bias_correction, state.acc_bias, gains.sat_acc_bias, dt);
+
+    // Compute the bias gain matrix updates
+    const Matrix3F& A11 = I3;
+    const Matrix3F& A12{}; // Zero matrix
+    const Matrix3F& A13{}; // Zero matrix
+    const Matrix3F& A21 = - Matrix3F::skew_symmetric(GammaInv.W1());
+    const Matrix3F& A22 = I3*GammaInv.A().a11();
+    const Matrix3F& A23 = I3*GammaInv.A().a21();
+    const Matrix3F& A31 = - Matrix3F::skew_symmetric(GammaInv.W2());
+    const Matrix3F& A32 = I3*GammaInv.A().a12();
+    const Matrix3F& A33 = I3*GammaInv.A().a22();
+
+    state.gyr_bias_gain_mat.rot = (A11 - K11 * C11) * M1Gyr + (A12 - K11 * C12) * M2Gyr + (A13 - K11 * C13) * M3Gyr;
+    state.gyr_bias_gain_mat.vel = (A21 - K21 * C11) * M1Gyr + (A22 - K21 * C12) * M2Gyr + (A23 - K21 * C13) * M3Gyr;
+    state.gyr_bias_gain_mat.pos = (A31 - K31 * C11) * M1Gyr + (A32 - K31 * C12) * M2Gyr + (A33 - K31 * C13) * M3Gyr;
+
+    state.acc_bias_gain_mat.rot = (A11 - K11 * C11) * M1Acc + (A12 - K11 * C12) * M2Acc + (A13 - K11 * C13) * M3Acc;
+    state.acc_bias_gain_mat.vel = (A21 - K21 * C11) * M1Acc + (A22 - K21 * C12) * M2Acc + (A23 - K21 * C13) * M3Acc;
+    state.acc_bias_gain_mat.pos = (A31 - K31 * C11) * M1Acc + (A32 - K31 * C12) * M2Acc + (A33 - K31 * C13) * M3Acc;
+
+    // Apply the state and bias updates
+    state.gyr_bias += state.gyr_bias_correction * dt;
+    state.acc_bias += state.acc_bias_correction * dt;
+    Omega_Delta += state.gyr_bias_gain_mat.rot * state.gyr_bias_correction + state.acc_bias_gain_mat.rot * state.acc_bias_correction;
+    W_Delta1 += state.gyr_bias_gain_mat.pos * state.gyr_bias_correction + state.acc_bias_gain_mat.pos * state.acc_bias_correction;
+    W_Delta2 += state.gyr_bias_gain_mat.vel * state.gyr_bias_correction + state.acc_bias_gain_mat.vel * state.acc_bias_correction;
+
+    // Construct the correction term Delta
+    SIM23 Delta_SIM23 = SIM23(Matrix3F::from_angular_velocity(Omega_Delta*dt), W_Delta1*dt, W_Delta2*dt, GL2::identity());
+    Delta_SIM23 = state.ZHat * Delta_SIM23 * ZInv;
+    const Gal3F Delta = Gal3F(Delta_SIM23.R(), Delta_SIM23.W2(), Delta_SIM23.W1(), 0.);
+
+    // Update the states using the correction terms
+    state.XHat = Delta * state.XHat;
+    state.ZHat = state.ZHat * GammaInv;
+}
+
 /*
   initialise yaw from compass, if available
  */
