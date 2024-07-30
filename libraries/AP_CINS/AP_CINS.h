@@ -68,15 +68,12 @@ public:
 private:
     void update_imu(const Vector3F &gyro_rads, const Vector3F &accel_mss, const ftype dt);
     void update_gps(const Vector3F &pos, const Vector3F &vel, const ftype gps_dt);
-    void update_states_gps(const Vector3F &pos, const Vector3F &vel, const ftype dt);
-    void update_states_gps_cts(const Vector3F &pos, const Vector3F &vel, const ftype dt);
-    void update_vector_measurement_cts(const Vector3F &measurement, const Vector3F& reference, const Vector2F &ref_base, const ftype& gain_R, const ftype& gain_V, const ftype dt);
+    void update_vector_measurement_cts(const Vector3F &measurement, const Vector3F& reference, const Vector2F &ref_base, const ftype& gain_R, const ftype& gain_V, const ftype& gain_gyr_bias, const ftype& gain_acc_bias, const ftype dt);
     void update_attitude_from_compass();
     bool init_yaw(void);
     bool get_compass_yaw(ftype &yaw_rad, ftype &dt);
     bool get_compass_vector(Vector3F &mag_vec, Vector3F &mag_ref, ftype &dt);
 
-    void compute_bias_update_gps(const SIM23& Gamma, const Vector3F& pos_tru, const Vector3F& vel_tru, const ftype& dt);
     void compute_bias_update_compass(const Vector3F& mag_tru, const Vector3F& mag_ref, const ftype& dt);
     void compute_bias_update_imu(const SIM23& Gamma);
     void saturate_bias(Vector3F& bias_correction, const Vector3F& current_bias, const ftype& saturation, const ftype& dt) const;
