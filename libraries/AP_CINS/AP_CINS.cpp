@@ -426,14 +426,17 @@ void AP_CINS::update_imu(const Vector3F &gyro_rads, const Vector3F &accel_mss, c
     }
 
     // Update using delayed GPS
-    const Vector3F mu_vel = delayer.gps_vel + gravity_vector*gains.gps_lag;
-    const Vector3F& mu0_vel = delayer.YR.vel();
+    const Vector3F& left_delay_vel = -gravity_vector*gains.gps_lag;
+    const Vector3F& left_delay_pos = -gravity_vector*0.5*gains.gps_lag*gains.gps_lag;
+
     const Vector2F& ref_vel = Vector2F(1., 0.);
+    const Vector3F& mu0_vel = delayer.YR.vel();
+    const Vector3F mu_vel = delayer.gps_vel - left_delay_vel * ref_vel.x - left_delay_pos * ref_vel.y;
     update_vector_measurement_cts(mu_vel, mu0_vel, ref_vel, gains.gpsvel_att, gains.gps_vel, gains.gps_vel_gyr_bias, gains.gps_vel_acc_bias, dt);
 
-    const Vector3F mu_pos = delayer.gps_pos + gravity_vector*0.5*gains.gps_lag*gains.gps_lag;
     const Vector3F& mu0_pos = delayer.YR.pos();
     const Vector2F& ref_pos = Vector2F(-gains.gps_lag, 1.);
+    const Vector3F mu_pos = delayer.gps_pos - left_delay_vel * ref_pos.x - left_delay_pos * ref_pos.y;
     update_vector_measurement_cts(mu_pos, mu0_pos, ref_pos, gains.gpspos_att, gains.gps_pos, gains.gps_pos_gyr_bias, gains.gps_pos_acc_bias, dt);
 
 }
