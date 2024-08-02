@@ -33,7 +33,8 @@ extern const AP_HAL::HAL& hal;
  */
 void AP_BoardConfig::board_init_safety()
 {
-    bool force_safety_off = (state.safety_enable.get() == 0);
+    const bool use_safety_as_led = (state.safety_option.get() == 2);
+    bool force_safety_off = (state.safety_enable.get() == 0) || use_safety_as_led;
     if (!force_safety_off && hal.util->was_watchdog_safety_off()) {
         GCS_SEND_TEXT(MAV_SEVERITY_INFO, "Forcing safety off for watchdog\n");
         force_safety_off = true;
