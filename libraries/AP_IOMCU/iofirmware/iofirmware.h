@@ -128,9 +128,6 @@ public:
     // output mode values
     struct page_mode_out mode_out;
 
-    // profiled control values
-    struct page_profiled profiled;
-
     uint16_t last_output_mode_mask;
     uint16_t last_output_bdmask;
     uint16_t last_output_esc_type;
