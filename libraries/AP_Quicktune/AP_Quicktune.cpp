@@ -580,64 +580,67 @@ AP_Quicktune::Stage AP_Quicktune::get_stage(AP_Quicktune::Param param)
 {
     if (param == Param::RLL_P || param == Param::PIT_P || param == Param::YAW_P) {
         return Stage::P;
+    } else if (param == Param::RLL_I || param == Param::PIT_I || param == Param::YAW_I) {
+        return Stage::I;
+    } else if (param == Param::RLL_D || param == Param::PIT_D || param == Param::YAW_D) {
+        return Stage::D;
+    } else if (param == Param::RLL_SMAX || param == Param::PIT_SMAX || param == Param::YAW_SMAX) {
+        return Stage::SMAX;
+    } else if (param == Param::RLL_FLTT || param == Param::PIT_FLTT || param == Param::YAW_FLTT) {
+        return Stage::FLTT;
+    } else if (param == Param::RLL_FLTD || param == Param::PIT_FLTD || param == Param::YAW_FLTD) {
+        return Stage::FLTD;
+    } else if (param == Param::RLL_FLTE || param == Param::PIT_FLTE || param == Param::YAW_FLTE) {
+        return Stage::FLTE;
+    } else if (param == Param::RLL_FF || param == Param::PIT_FF || param == Param::YAW_FF) {
+        return Stage::FF;
     } else {
-        return Stage::END; //Means "anything but P gain"
+        INTERNAL_ERROR(AP_InternalError::error_t::flow_of_control);
+        return Stage::END;
     }
 }
 
 AP_Float *AP_Quicktune::get_param_pointer(AP_Quicktune::Param param)
 {
     auto &attitude_control = *AC_AttitudeControl::get_singleton();
-    switch (param)
+    AC_PID* pid_ptr;
+
+    AxisName axis = get_axis(param);
+    switch (axis)
     {
-        case Param::RLL_P:
-            return &attitude_control.get_rate_roll_pid().kP();
-        case Param::RLL_I:
-            return &attitude_control.get_rate_roll_pid().kI();
-        case Param::RLL_D:
-            return &attitude_control.get_rate_roll_pid().kD();
-        case Param::RLL_SMAX:
-            return &attitude_control.get_rate_roll_pid().slew_limit();
-        case Param::RLL_FLTT:
-            return &attitude_control.get_rate_roll_pid().filt_T_hz();
-        case Param::RLL_FLTD:
-            return &attitude_control.get_rate_roll_pid().filt_D_hz();
-        case Param::RLL_FLTE:
-            return &attitude_control.get_rate_roll_pid().filt_E_hz();
-        case Param::RLL_FF:
-            return &attitude_control.get_rate_roll_pid().ff();
-        case Param::PIT_P:
-            return &attitude_control.get_rate_pitch_pid().kP();
-        case Param::PIT_I:
-            return &attitude_control.get_rate_pitch_pid().kI();
-        case Param::PIT_D:
-            return &attitude_control.get_rate_pitch_pid().kD();
-        case Param::PIT_SMAX:
-            return &attitude_control.get_rate_pitch_pid().slew_limit();
-        case Param::PIT_FLTT:
-            return &attitude_control.get_rate_pitch_pid().filt_T_hz();
-        case Param::PIT_FLTD:
-            return &attitude_control.get_rate_pitch_pid().filt_D_hz();
-        case Param::PIT_FLTE:
-            return &attitude_control.get_rate_pitch_pid().filt_E_hz();
-        case Param::PIT_FF:
-            return &attitude_control.get_rate_pitch_pid().ff();
-        case Param::YAW_P:
-            return &attitude_control.get_rate_yaw_pid().kP();
-        case Param::YAW_I:
-            return &attitude_control.get_rate_yaw_pid().kI();
-        case Param::YAW_D:
-            return &attitude_control.get_rate_yaw_pid().kD();
-        case Param::YAW_SMAX:
-            return &attitude_control.get_rate_yaw_pid().slew_limit();    
-        case Param::YAW_FLTT:
-            return &attitude_control.get_rate_yaw_pid().filt_T_hz();
-        case Param::YAW_FLTD:
-            return &attitude_control.get_rate_yaw_pid().filt_D_hz();
-        case Param::YAW_FLTE:
-            return &attitude_control.get_rate_yaw_pid().filt_E_hz();
-        case Param::YAW_FF:
-            return &attitude_control.get_rate_roll_pid().ff();
+        case AxisName::RLL:
+            pid_ptr = &attitude_control.get_rate_roll_pid();
+            break;
+        case AxisName::PIT:
+            pid_ptr =  &attitude_control.get_rate_pitch_pid();
+            break;
+        case AxisName::YAW:
+            pid_ptr =  &attitude_control.get_rate_yaw_pid();
+            break;
+        default:
+            INTERNAL_ERROR(AP_InternalError::error_t::flow_of_control);
+            return nullptr;
+    }
+    
+    Stage stage = get_stage(param);
+    switch (stage)
+    {
+        case Stage::P:
+            return &pid_ptr->kP();
+        case Stage::I:
+            return &pid_ptr->kI();
+        case Stage::D:
+            return &pid_ptr->kD();
+        case Stage::SMAX:
+            return &pid_ptr->slew_limit();
+        case Stage::FLTT:
+            return &pid_ptr->filt_T_hz();
+        case Stage::FLTD:
+            return &pid_ptr->filt_D_hz();
+        case Stage::FLTE:
+            return &pid_ptr->filt_E_hz();
+        case Stage::FF:
+            return &pid_ptr->ff();
         default:
             INTERNAL_ERROR(AP_InternalError::error_t::flow_of_control);
             return nullptr;
