@@ -130,7 +130,6 @@ private:
 
     void reset_axes_done();
     void setup_filters(AxisName axis);
-    bool have_pilot_input();
     AxisName get_current_axis();
     float get_slew_rate(AxisName axis);
     void advance_stage(AxisName axis);

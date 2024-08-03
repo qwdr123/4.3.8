@@ -156,7 +156,9 @@ void AP_Quicktune::update(bool mode_supports_quicktune)
         }
     }
 
-    if (have_pilot_input()) {
+    const auto &vehicle = *AP::vehicle();
+
+    if (vehicle.have_pilot_input()) {
         last_pilot_input = now;
     }
 
@@ -166,8 +168,6 @@ void AP_Quicktune::update(bool mode_supports_quicktune)
         sw_pos_tune = SwitchPos::HIGH;
         sw_pos_save = SwitchPos::NONE;
     }
-
-    const auto &vehicle = *AP::vehicle();
 
     if (sw_pos == sw_pos_tune && (!hal.util->get_soft_armed() || !vehicle.get_likely_flying()) && now > last_warning + 5000) {
         GCS_SEND_TEXT(MAV_SEVERITY_EMERGENCY, "Tuning: Must be flying to tune");
@@ -361,20 +361,6 @@ void AP_Quicktune::setup_filters(AP_Quicktune::AxisName axis)
         }
     }
     BIT_SET(filters_done, uint8_t(axis));
-}
-
-// Check for pilot input to pause tune
-bool AP_Quicktune::have_pilot_input()
-{
-    const auto &rcmap = *AP::rcmap();
-    float roll = rc().rc_channel(rcmap.roll()-1)->norm_input_dz();
-    float pitch = rc().rc_channel(rcmap.pitch()-1)->norm_input_dz();
-    float yaw = rc().rc_channel(rcmap.yaw()-1)->norm_input_dz();
-
-    if (fabsf(roll) > 0 || fabsf(pitch) > 0 || fabsf(yaw) > 0) {
-        return true;
-    }
-    return false;
 }
 
 // Get the axis name we are working on, or DONE for all done 
