@@ -4,6 +4,7 @@
 #include <AP_Math/AP_Math.h>            // ArduPilot Mega Vector/Matrix math Library
 #include <RC_Channel/RC_Channel.h>
 #include <SRV_Channel/SRV_Channel.h>
+#include <AP_Logger/AP_Logger.h>
 
 // rotor control modes
 enum RotorControlMode {
@@ -21,9 +22,12 @@ public:
     friend class AP_MotorsHeli_Quad;
 
     AP_MotorsHeli_RSC(SRV_Channel::Aux_servo_function_t aux_fn,
-                      uint8_t default_channel) :
+                      uint8_t default_channel,
+                      uint8_t inst) :
         _aux_fn(aux_fn),
-        _default_channel(default_channel)
+        _default_channel(default_channel),
+        _instance(inst),
+        autorotation(*this)
     {
         AP_Param::setup_object_defaults(this, var_info);
     };
@@ -56,12 +60,8 @@ public:
     // set_desired_speed - this requires input to be 0-1
     void        set_desired_speed(float desired_speed) { _desired_speed = desired_speed; }
 
-    // get_rotor_speed - estimated rotor speed when no governor or rpm sensor is used
-    float       get_rotor_speed() const;
-
     // functions for autothrottle, throttle curve, governor, idle speed, output to servo
     void        set_governor_output(float governor_output) {_governor_output = governor_output; }
-    float       get_governor_output() const { return _governor_output; }
     void        governor_reset();
     float       get_control_output() const { return _control_output; }
     void        set_idle_output(float idle_output) { _idle_output.set(idle_output); }
@@ -84,7 +84,7 @@ public:
 
     // helpers to check if we are considered to be autorotating
     bool        in_autorotation(void) const;
-    bool        autorotation_active(void) const { return autorotation.state == Autorotation::State::ACTIVE; }
+    bool        autorotation_active(void) const { return autorotation.get_state() == Autorotation::State::ACTIVE; }
     bool        autorotation_enabled(void) const { return autorotation.enable.get() == 1; }
 
     // turbine start initialize sequence
@@ -97,7 +97,12 @@ public:
     uint32_t    get_output_mask() const;
 
     // rotor_speed_above_critical - return true if rotor speed is above that critical for flight
-    bool        rotor_speed_above_critical(void) const { return get_rotor_speed() >= get_critical_speed(); }
+    bool        rotor_speed_above_critical(void) const { return _rotor_runup_output >= get_critical_speed(); }
+
+#if HAL_LOGGING_ENABLED
+    // RSC logging
+    void write_log(void) const;
+#endif
 
     // var_info for holding Parameter information
     static const struct AP_Param::GroupInfo var_info[];
@@ -112,6 +117,7 @@ public:
 
 private:
     uint64_t        _last_update_us;
+    const uint8_t   _instance;
 
     // channel setup for aux function
     SRV_Channel::Aux_servo_function_t _aux_fn;
@@ -170,8 +176,8 @@ private:
 
     // helper class to manage autorotation state and variables within RSC
     class Autorotation {
-        public:
-
+    public:
+        Autorotation(const AP_MotorsHeli_RSC& rsc) : _rsc(rsc) {};
         bool get_idle_throttle(float& _idle_throttle);
         void update_bailout_ramp(float& ramp_time);
 
@@ -179,13 +185,18 @@ private:
                 DEACTIVATED,
                 BAILING_OUT,
                 ACTIVE,
-            } state;
+            };
 
         void set_state(State desired_state);
+        State get_state(void) const { return state; }
 
         AP_Int8  idle_output;    // (percent) rsc output used when in autorotation, used for setting autorotation window on ESCs
         AP_Int8  bailout_time;    // time in seconds for in-flight power re-engagement when bailing-out of an autorotation
         AP_Int8  enable;         // enables autorotation state within the RSC
+
+    private:
+        const AP_MotorsHeli_RSC& _rsc;
+        State state;
 
     } autorotation;
 
