@@ -202,7 +202,6 @@ void AP_Quicktune::update(bool mode_supports_quicktune)
         if (slew_parm != Param::END) {
             float P = get_param_value(slew_parm);
             AxisName axis = get_axis(slew_parm);
-            // local ax_stage = string.sub(slew_parm, -1)
             adjust_gain(slew_parm, P+slew_delta);
             slew_steps = slew_steps - 1;
             Write_QUIK(get_slew_rate(axis), P, slew_parm);
@@ -344,6 +343,7 @@ void AP_Quicktune::setup_filters(AP_Quicktune::AxisName axis)
 {
     if (auto_filter <= 0) {
         BIT_SET(filters_done, uint8_t(axis));
+        return;
     }
     AP_InertialSensor *imu = AP_InertialSensor::get_singleton();
     if (imu == nullptr) {
@@ -497,7 +497,6 @@ void AP_Quicktune::restore_all_params()
 
 void AP_Quicktune::save_all_params()
 {
-    // for pname in pairs(params) do
     for (int8_t pname = 0; pname < uint8_t(Param::END); pname++) {
         if (BIT_IS_SET(param_changed, pname)) {
             set_and_save_param_value(Param(pname), get_param_value(Param(pname)));
@@ -651,7 +650,6 @@ void AP_Quicktune::set_param_value(AP_Quicktune::Param param, float value)
        return;
     }
     INTERNAL_ERROR(AP_InternalError::error_t::flow_of_control);
-    return;
 }
 
 void AP_Quicktune::set_and_save_param_value(AP_Quicktune::Param param, float value)
@@ -662,7 +660,6 @@ void AP_Quicktune::set_and_save_param_value(AP_Quicktune::Param param, float val
        return;
     }
     INTERNAL_ERROR(AP_InternalError::error_t::flow_of_control);
-    return;
 }
 
 AP_Quicktune::AxisName AP_Quicktune::get_axis(AP_Quicktune::Param param)
