@@ -313,6 +313,7 @@ void AP_MotorsHeli::output_logic()
         if (!get_interlock()) {
             _spool_desired = DesiredSpoolState::GROUND_IDLE;
         } else {
+            _spool_desired = DesiredSpoolState::THROTTLE_UNLIMITED;
             _heliflags.init_targets_on_arming = false;
         }
     } else {
