@@ -180,6 +180,7 @@ private:
         Autorotation(const AP_MotorsHeli_RSC& rsc) : _rsc(rsc) {};
         bool get_idle_throttle(float& _idle_throttle);
         void update_bailout_ramp(float& ramp_time);
+        void update_runup_time(float& runup_time);
 
             enum class State {
                 DEACTIVATED,
@@ -190,9 +191,10 @@ private:
         void set_state(State desired_state);
         State get_state(void) const { return state; }
 
-        AP_Int8  idle_output;    // (percent) rsc output used when in autorotation, used for setting autorotation window on ESCs
-        AP_Int8  bailout_time;    // time in seconds for in-flight power re-engagement when bailing-out of an autorotation
-        AP_Int8  enable;         // enables autorotation state within the RSC
+        AP_Int8  idle_output;             // (percent) rsc output used when in autorotation, used for setting autorotation window on ESCs
+        AP_Int8  bailout_throttle_time;   // (seconds) time for in-flight power re-engagement when bailing-out of an autorotation
+        AP_Int8  bailout_runup_time;      // (seconds) expected time for the motor to fully engage and for the rotor to regain safe head speed if necessary
+        AP_Int8  enable;                  // enables autorotation state within the RSC
 
     private:
         const AP_MotorsHeli_RSC& _rsc;

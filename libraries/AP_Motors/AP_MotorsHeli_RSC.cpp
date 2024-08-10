@@ -220,14 +220,14 @@ const AP_Param::GroupInfo AP_MotorsHeli_RSC::var_info[] = {
     // @User: Standard
     AP_GROUPINFO("GOV_TORQUE", 24, AP_MotorsHeli_RSC, _governor_torque, 30),
 
-    // @Param: AROT_ENG_T
-    // @DisplayName: Time for in-flight power re-engagement
-    // @Description: amount of seconds to move throttle output from idle to throttle curve position during manual autorotations
-    // @Range: 0 10
-    // @Units: %
+    // @Param: AROT_RAMP
+    // @DisplayName: Time for in-flight power re-engagement when exiting autorotations
+    // @Description: When exiting an autorotation in a bailout manoeuvre, this is the time in seconds for the throttle output (HeliRSC servo) to ramp from idle (H_RSC_AROT_IDLE) to flight throttle setting when motor interlock is re-enabled. When using an ESC with an autorotation bailout function, this parameter should be set to 0.
+    // @Range: 1 10
+    // @Units: s
     // @Increment: 0.5
     // @User: Standard
-    AP_GROUPINFO("AROT_ENG_T", 25, AP_MotorsHeli_RSC, autorotation.bailout_time, AP_MOTORS_HELI_RSC_AROT_BAILOUT_TIME),
+    AP_GROUPINFO("AROT_RAMP", 25, AP_MotorsHeli_RSC, autorotation.bailout_throttle_time, AP_MOTORS_HELI_RSC_AROT_BAILOUT_TIME),
 
     // @Param: AROT_ENBL
     // @DisplayName: Enable Manual Autorotations
@@ -238,12 +238,21 @@ const AP_Param::GroupInfo AP_MotorsHeli_RSC::var_info[] = {
 
     // @Param: AROT_IDLE
     // @DisplayName: Idle Throttle Percentage during Autorotation
-    // @Description: Idle throttle used for all RSC modes.  For external governors, this would be set to signal it to enable fast spool-up, when bailing out of an autorotation.  Set 0 to disable. If also using a tail rotor of type DDVP with external governor then this value must lie within the autorotation window of both governors.
+    // @Description: Idle throttle used for all RSC modes. For external governors, this would be set to signal it to enable fast spool-up, when bailing out of an autorotation.  Set 0 to disable. If also using a tail rotor of type DDVP with external governor then this value must lie within the autorotation window of both governors.
     // @Range: 0 40
     // @Units: %
     // @Increment: 1
     // @User: Standard
     AP_GROUPINFO("AROT_IDLE", 27, AP_MotorsHeli_RSC, autorotation.idle_output, AP_MOTORS_HELI_RSC_AROT_IDLE),
+
+    // @Param: AROT_RUNUP
+    // @DisplayName: Time allowed for in-flight power re-engagement
+    // @Description: When exiting an autorotation in a bailout manoeuvre, this is the expected time in seconds for the main rotor to reach full speed after motor interlock is enabled (throttle hold off). Must be at least one second longer than the H_RSC_AROT_RAMP time that is set. This timer should be set for at least the amount of time it takes to get your helicopter to full flight power. Failure to heed this warning could result in early entry into autonomously controlled collective modes (e.g. alt hold, loiter, etc), whereby the collective could be raised before the engine has reached full power, with a subsequently dangerous slowing of head speed.
+    // @Range: 1 10
+    // @Units: s
+    // @Increment: 0.1
+    // @User: Standard
+    AP_GROUPINFO("AROT_RUNUP", 28, AP_MotorsHeli_RSC, autorotation.bailout_runup_time, AP_MOTORS_HELI_RSC_AROT_BAILOUT_TIME+1),
 
     AP_GROUPEND
 };
@@ -424,15 +433,13 @@ void AP_MotorsHeli_RSC::update_rotor_ramp(float rotor_ramp_input, float dt)
 // update_rotor_runup - function to slew rotor runup scalar, outputs float scalar to _rotor_runup_ouptut
 void AP_MotorsHeli_RSC::update_rotor_runup(float dt)
 {
-    int8_t runup_time = _runup_time;
+    float runup_time = _runup_time;
     // sanity check runup time
     runup_time = MAX(_ramp_time+1,runup_time);
 
-    // adjust rotor runup when bailing out
-    if (autorotation.get_state() == Autorotation::State::BAILING_OUT) {
-        // maintain same delta as set in parameters
-        runup_time = _runup_time-_ramp_time+1;
-    }
+    // adjust rotor runup when in autorotation or bailing out
+    // this method will only modify the runup_time if it needs to be changed, based on autorotation state
+    autorotation.update_runup_time(runup_time);
 
     // protect against divide by zero
     runup_time = MAX(1,runup_time);
@@ -705,6 +712,22 @@ bool AP_MotorsHeli_RSC::Autorotation::get_idle_throttle(float& _idle_throttle)
 void AP_MotorsHeli_RSC::Autorotation::update_bailout_ramp(float& ramp_time)
 {
     if (state == Autorotation::State::BAILING_OUT) {
-        ramp_time = MAX(float(bailout_time.get()), 1.0);
+        // Allow ramp times as quick as 0.1 of a second for ESCs with autorotation windows
+        ramp_time = MAX(float(bailout_throttle_time.get()), 0.1);
+    }
+}
+
+void AP_MotorsHeli_RSC::Autorotation::update_runup_time(float& runup_time)
+{
+    // If we are in the autorotation state we want the rotor speed model to ramp down rapidly to zero, ensuring we get past
+    // the critical rotor speed, and therefore triggering a proper bailout should we re-engage the interlock at any point
+    if (state == Autorotation::State::ACTIVE) {
+        runup_time = 0.1;
+        return;
+    }
+
+    if (state == Autorotation::State::BAILING_OUT) {
+        // Never let the runup timer be less than the throttle ramp time
+        runup_time = (float) MAX(bailout_throttle_time.get() + 1, bailout_runup_time.get());
     }
 }
