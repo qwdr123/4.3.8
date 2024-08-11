@@ -298,7 +298,9 @@ void AP_ExternalAHRS::get_filter_status(nav_filter_status &status) const
 bool AP_ExternalAHRS::get_gyro(Vector3f &gyro)
 {
     WITH_SEMAPHORE(state.sem);
-    if (!has_sensor(AvailableSensor::IMU)) {
+    // use accel as a proxy for having gyro - we never expect an exactly
+    // zero accel, but may have a zero gyro
+    if (!has_sensor(AvailableSensor::IMU) || state.accel.is_zero()) {
         return false;
     }
     gyro = state.gyro;
@@ -308,7 +310,7 @@ bool AP_ExternalAHRS::get_gyro(Vector3f &gyro)
 bool AP_ExternalAHRS::get_accel(Vector3f &accel)
 {
     WITH_SEMAPHORE(state.sem);
-    if (!has_sensor(AvailableSensor::IMU)) {
+    if (!has_sensor(AvailableSensor::IMU) || state.accel.is_zero()) {
         return false;
     }
     accel = state.accel;
