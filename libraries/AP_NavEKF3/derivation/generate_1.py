@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
 # Copied from https://github.com/PX4/ecl/commit/264c8c4e8681704e4719d0a03b848df8617c0863
 # and modified for ArduPilot
+from sympy import __version__ as __sympy__version__
 from sympy import *
 from code_gen import *
 import numpy as np
+
+assert __sympy__version__ == "1.9", "expected sympy version 1.9, not "+__sympy__version__
 
 # q: quaternion describing rotation from frame 1 to frame 2
 # returns a rotation matrix derived form q which describes the same
