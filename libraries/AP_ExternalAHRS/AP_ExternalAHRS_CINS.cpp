@@ -31,6 +31,8 @@ AP_ExternalAHRS_CINS::AP_ExternalAHRS_CINS(AP_ExternalAHRS *_frontend,
     cins_ptr = &cins;
     GCS_SEND_TEXT(MAV_SEVERITY_INFO, "CINS Started");
     cins.init();
+    // CINS does not provide new sensors, only a state estimate
+    set_default_sensors(0);
 }
 
 void AP_ExternalAHRS_CINS::update(void)
