@@ -196,7 +196,7 @@ void AP_CINS::update(void)
     const auto &ins = dal.ins();
 
     // Get delta angle and convert to gyro rad/s
-    const uint8_t gyro_index = ins.get_primary_gyro();
+    const uint8_t gyro_index = ins.get_first_usable_gyro();
     Vector3f delta_angle;
     float dangle_dt;
     if (!ins.get_delta_angle(gyro_index, delta_angle, dangle_dt) || dangle_dt <= 0) {
