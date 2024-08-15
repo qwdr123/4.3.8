@@ -14,7 +14,6 @@
 #if MODE_AUTOROTATE_ENABLED == ENABLED
 
 #define AUTOROTATE_ENTRY_TIME          2.0f    // (s) number of seconds that the entry phase operates for
-#define BAILOUT_MOTOR_RAMP_TIME        1.0f    // (s) time set on bailout ramp up timer for motors - See AC_MotorsHeli_Single
 #define HEAD_SPEED_TARGET_RATIO        1.0f    // Normalised target main rotor head speed (unit: -)
 
 bool ModeAutorotate::init(bool ignore_checks)
@@ -24,15 +23,16 @@ bool ModeAutorotate::init(bool ignore_checks)
     return false;
 #endif
 
-    // Check that mode is enabled
+    // Check that mode is enabled, make sure this is the first check as this is the most
+    // important thing for users to fix if they are planning to use autorotation mode
     if (!g2.arot.is_enable()) {
-        gcs().send_text(MAV_SEVERITY_INFO, "Autorot Mode Not Enabled");
+        gcs().send_text(MAV_SEVERITY_WARNING, "Autorot Mode Not Enabled");
         return false;
     }
 
-    // Check that interlock is disengaged
-    if (motors->get_interlock()) {
-        gcs().send_text(MAV_SEVERITY_INFO, "Autorot Mode Change Fail: Interlock Engaged");
+    // Must be armed to use mode, prevent triggering state machine on the ground
+    if (!motors->armed() || copter.ap.land_complete || copter.ap.land_complete_maybe) {
+        gcs().send_text(MAV_SEVERITY_WARNING, "Autorot: Must be Armed and Flying");
         return false;
     }
 
@@ -55,7 +55,6 @@ bool ModeAutorotate::init(bool ignore_checks)
     _flags.level_initial = true;
     _flags.break_initial = true;
     _flags.straight_ahead_initial = true;
-    _flags.bail_out_initial = true;
     _msg_flags.bad_rpm = true;
 
     // Setting default starting switches
@@ -74,19 +73,8 @@ bool ModeAutorotate::init(bool ignore_checks)
 
 void ModeAutorotate::run()
 {
-    // Check if interlock becomes engaged
-    if (motors->get_interlock() && !copter.ap.land_complete) {
-        phase_switch = Autorotation_Phase::BAIL_OUT;
-    } else if (motors->get_interlock() && copter.ap.land_complete) {
-        // Aircraft is landed and no need to bail out
-        set_mode(copter.prev_control_mode, ModeReason::AUTOROTATION_BAILOUT);
-    }
-
     // Current time
     uint32_t now = millis(); //milliseconds
-
-    // Initialise internal variables
-    float curr_vel_z = inertial_nav.get_velocity_z_up_cms();   // Current vertical descent
 
     //----------------------------------------------------------------
     //                  State machine logic
@@ -199,78 +187,7 @@ void ModeAutorotate::run()
         {
             break;
         }
-
-        case Autorotation_Phase::BAIL_OUT:
-        {
-        if (_flags.bail_out_initial == true) {
-                // Functions and settings to be done once are done here.
-
-                #if CONFIG_HAL_BOARD == HAL_BOARD_SITL
-                    gcs().send_text(MAV_SEVERITY_INFO, "Bailing Out of Autorotation");
-                #endif
-
-                // Set bail out timer remaining equal to the parameter value, bailout time 
-                // cannot be less than the motor spool-up time: BAILOUT_MOTOR_RAMP_TIME.
-                _bail_time = MAX(g2.arot.get_bail_time(),BAILOUT_MOTOR_RAMP_TIME+0.1f);
-
-                // Set bail out start time
-                _bail_time_start_ms = now;
-
-                // Set initial target vertical speed
-                _desired_v_z = curr_vel_z;
-
-                // Initialise position and desired velocity
-                if (!pos_control->is_active_z()) {
-                    pos_control->relax_z_controller(g2.arot.get_last_collective());
-                }
-
-                // Get pilot parameter limits
-                const float pilot_spd_dn = -get_pilot_speed_dn();
-                const float pilot_spd_up = g.pilot_speed_up;
-
-                float pilot_des_v_z = get_pilot_desired_climb_rate(channel_throttle->get_control_in());
-                pilot_des_v_z = constrain_float(pilot_des_v_z, pilot_spd_dn, pilot_spd_up);
-
-                // Calculate target climb rate adjustment to transition from bail out descent speed to requested climb rate on stick.
-                _target_climb_rate_adjust = (curr_vel_z - pilot_des_v_z)/(_bail_time - BAILOUT_MOTOR_RAMP_TIME); //accounting for 0.5s motor spool time
-
-                // Calculate pitch target adjustment rate to return to level
-                _target_pitch_adjust = _pitch_target/_bail_time;
-
-                // set vertical speed and acceleration limits
-                pos_control->set_max_speed_accel_z(curr_vel_z, pilot_spd_up, fabsf(_target_climb_rate_adjust));
-                pos_control->set_correction_speed_accel_z(curr_vel_z, pilot_spd_up, fabsf(_target_climb_rate_adjust));
-
-                motors->set_desired_spool_state(AP_Motors::DesiredSpoolState::THROTTLE_UNLIMITED);
-
-                _flags.bail_out_initial = false;
-            }
-
-        if ((now - _bail_time_start_ms)/1000.0f >= BAILOUT_MOTOR_RAMP_TIME) {
-            // Update desired vertical speed and pitch target after the bailout motor ramp timer has completed
-            _desired_v_z -= _target_climb_rate_adjust*G_Dt;
-            _pitch_target -= _target_pitch_adjust*G_Dt;
-        }
-        // Set position controller
-        pos_control->set_pos_target_z_from_climb_rate_cm(_desired_v_z);
-
-        // Update controllers
-        pos_control->update_z_controller();
-
-        if ((now - _bail_time_start_ms)/1000.0f >= _bail_time) {
-            // Bail out timer complete.  Change flight mode. Do not revert back to auto. Prevent aircraft
-            // from continuing mission and potentially flying further away after a power failure.
-            if (copter.prev_control_mode == Mode::Number::AUTO) {
-                set_mode(Mode::Number::ALT_HOLD, ModeReason::AUTOROTATION_BAILOUT);
-            } else {
-                set_mode(copter.prev_control_mode, ModeReason::AUTOROTATION_BAILOUT);
-            }
-        }
-
-        break;
-        }
     }
-
 
     switch (nav_pos_switch) {
 

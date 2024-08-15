@@ -313,6 +313,7 @@ void AP_MotorsHeli::output_logic()
         if (!get_interlock()) {
             _spool_desired = DesiredSpoolState::GROUND_IDLE;
         } else {
+            _spool_desired = DesiredSpoolState::THROTTLE_UNLIMITED;
             _heliflags.init_targets_on_arming = false;
         }
     } else {
@@ -606,7 +607,7 @@ void AP_MotorsHeli::set_rotor_runup_complete(bool new_value)
 #if HAL_LOGGING_ENABLED
     if (!_heliflags.rotor_runup_complete && new_value) {
         LOGGER_WRITE_EVENT(LogEvent::ROTOR_RUNUP_COMPLETE);
-    } else if (_heliflags.rotor_runup_complete && !new_value && !_heliflags.in_autorotation) {
+    } else if (_heliflags.rotor_runup_complete && !new_value && !_main_rotor.in_autorotation()) {
         LOGGER_WRITE_EVENT(LogEvent::ROTOR_SPEED_BELOW_CRITICAL);
     }
 #endif
