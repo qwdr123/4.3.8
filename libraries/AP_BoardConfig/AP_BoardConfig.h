@@ -103,6 +103,12 @@ public:
 #endif
     }
 
+#if HAL_WITH_IO_MCU
+    static bool use_safety_as_led(void) {
+        return _singleton?(_singleton->state.safety_enable.get() == 2):false;
+    }
+#endif
+
     // get alternative config selection
     uint8_t get_alt_config(void) {
         return uint8_t(_alt_config.get());
