@@ -123,6 +123,7 @@ private:
         ACQUIRE_GIMBAL_ATTITUDE = 0x0D,
         ABSOLUTE_ZOOM = 0x0F,
         SET_CAMERA_IMAGE_TYPE = 0x11,
+        GET_TEMP_FULL_IMAGE = 0x14,
         READ_RANGEFINDER = 0x15,
         SET_THERMAL_PALETTE = 0x1B,
         EXTERNAL_ATTITUDE = 0x22,
@@ -300,6 +301,9 @@ private:
     // Checks that the firmware version on the Gimbal meets the minimum supported version.
     void check_firmware_version() const;
 
+    // get thermal min/max if available at 5hz
+    void request_thermal_minmax();
+
     // internal variables
     bool _got_hardware_id;                          // true once hardware id ha been received
 
@@ -353,6 +357,16 @@ private:
         const char* model_name;
     };
     static const HWInfo hardware_lookup_table[];
+
+    // thermal variables
+    struct {
+        uint32_t last_req_ms;       // system time of last request for thermal min/max temperatures
+        uint32_t last_update_ms;    // system time of last update of thermal min/max temperatures
+        float max_C;                // thermal max temp in C
+        float min_C;                // thermal min temp in C
+        Vector2ui max_pos;          // thermal max temp position on image in pixels. x=0 is left, y=0 is top
+        Vector2ui min_pos;          // thermal min temp position on image in pixels. x=0 is left, y=0 is top
+    } _thermal;
 
     // count of SET_TIME packets, we send 5 times to cope with packet loss
     uint8_t sent_time_count;
