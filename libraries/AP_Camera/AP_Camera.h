@@ -240,6 +240,9 @@ private:
     // send camera capture status message to GCS
     void send_camera_capture_status(mavlink_channel_t chan);
 
+    // send camera thermal status message to GCS
+    void send_camera_thermal_status(mavlink_channel_t chan);
+
     HAL_Semaphore _rsem;                // semaphore for multi-thread access
     AP_Camera_Backend *primary;         // primary camera backed
     bool _is_in_auto_mode;              // true if in AUTO mode
