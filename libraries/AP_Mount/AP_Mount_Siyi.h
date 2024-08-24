@@ -82,6 +82,9 @@ public:
     // send camera settings message to GCS
     void send_camera_settings(mavlink_channel_t chan) const override;
 
+    // send camera thermal status message to GCS
+    void send_camera_thermal_status(mavlink_channel_t chan) const override;
+
     // change camera settings not normally used by autopilot
     // THERMAL_PALETTE: 0:WhiteHot, 2:Sepia, 3:IronBow, 4:Rainbow, 5:Night, 6:Aurora, 7:RedHot, 8:Jungle, 9:Medical, 10:BlackHot, 11:GloryHot
     // THERMAL_GAIN: 0:Low gain (50C ~ 550C), 1:High gain (-20C ~ 150C)

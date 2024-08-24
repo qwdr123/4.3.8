@@ -562,15 +562,6 @@ void AP_Mount_Siyi::process_packet()
         _thermal.max_pos.y = UINT16_VALUE(_msg_buff[_msg_buff_data_start+7], _msg_buff[_msg_buff_data_start+6]);
         _thermal.min_pos.x = UINT16_VALUE(_msg_buff[_msg_buff_data_start+9], _msg_buff[_msg_buff_data_start+8]);
         _thermal.min_pos.y = UINT16_VALUE(_msg_buff[_msg_buff_data_start+11], _msg_buff[_msg_buff_data_start+10]);
-
-        gcs().send_named_float("ThermMaxC", _thermal.max_C);
-        gcs().send_named_float("ThermMinC", _thermal.min_C);
-        gcs().send_named_float("ThermMaxX", _thermal.max_pos.x);
-        gcs().send_named_float("ThermMaxY", _thermal.max_pos.y);
-        gcs().send_named_float("ThermMinX", _thermal.min_pos.x);
-        gcs().send_named_float("ThermMinY", _thermal.min_pos.y);
-
-        //GCS_SEND_TEXT(MAV_SEVERITY_INFO, "Mount: therm max:%.2f min:%.2f pos:%u,%u pos:%u,%u", (double)_thermal.max_C, (double)_thermal.min_C, (unsigned)_thermal.max_pos.x, (unsigned)_thermal.max_pos.y, (unsigned)_thermal.min_pos.x, (unsigned)_thermal.min_pos.y);
         break;
     }
 
@@ -1126,6 +1117,27 @@ void AP_Mount_Siyi::send_camera_settings(mavlink_channel_t chan) const
         mode_id,            // camera mode (0:image, 1:video, 2:image survey)
         zoom_pct,           // zoomLevel float, percentage from 0 to 100, NaN if unknown
         NaN);               // focusLevel float, percentage from 0 to 100, NaN if unknown
+}
+
+// send camera thermal status message to GCS
+void AP_Mount_Siyi::send_camera_thermal_status(mavlink_channel_t chan) const
+{
+    const float NaN = nanf("0x4152");
+    const uint32_t now_ms = AP_HAL::millis();
+    bool timeout = now_ms - _thermal.last_update_ms > AP_MOUNT_SIYI_THERM_TIMEOUT_MS;
+
+    // send CAMERA_THERMAL_STATUS message
+    mavlink_msg_camera_thermal_status_send(
+        chan,
+        now_ms,             // time_boot_ms
+        _instance + 1,      // camera device id
+        timeout ? CAMERA_THERMAL_UNAVAILABLE : CAMERA_THERMAL_AVAILABLE,    // status (0:CAMERA_THERMAL_UNAVAILABLE or 1:CAMERA_THERMAL_AVAILABLE)
+        timeout ? NaN : _thermal.max_C,     // max in degC
+        timeout ? NaN : _thermal.max_pos.x, // max x position
+        timeout ? NaN : _thermal.max_pos.y, // max y position
+        timeout ? NaN : _thermal.min_C,     // min in degC
+        timeout ? NaN : _thermal.min_pos.x, // min x position
+        timeout ? NaN : _thermal.min_pos.y);// min y position
 }
 
 // change camera settings not normally used by autopilot
