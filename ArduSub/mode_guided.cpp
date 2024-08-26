@@ -296,7 +296,7 @@ void ModeGuided::guided_set_velocity(const Vector3f& velocity, bool use_yaw, flo
 }
 
 // set guided mode posvel target
-bool ModeGuided::guided_set_destination_posvel(const Vector3f& destination, const Vector3f& velocity, Location::AltFrame frame)
+bool ModeGuided::guided_set_destination_posvel(const Vector3f& destination, const Vector3f& velocity, Location::AltFrame alt_frame)
 {
     // check we are in velocity control mode
     if (sub.guided_mode != Guided_PosVel) {
@@ -305,7 +305,7 @@ bool ModeGuided::guided_set_destination_posvel(const Vector3f& destination, cons
 
 #if AP_FENCE_ENABLED
     // reject destination if outside the fence
-    const Location dest_loc(destination, frame);
+    const Location dest_loc(destination, alt_frame);
     if (!sub.fence.check_destination_within_fence(dest_loc)) {
         LOGGER_WRITE_ERROR(LogErrorSubsystem::NAVIGATION, LogErrorCode::DEST_OUTSIDE_FENCE);
         // failure is propagated to GCS with NAK
@@ -315,7 +315,7 @@ bool ModeGuided::guided_set_destination_posvel(const Vector3f& destination, cons
 
 #if AP_RANGEFINDER_ENABLED
     // reject ABOVE_TERRAIN frame if the rangefinder is missing or unhealthy
-    if (frame == Location::AltFrame::ABOVE_TERRAIN && !sub.rangefinder_alt_ok()) {
+    if (alt_frame == Location::AltFrame::ABOVE_TERRAIN && !sub.rangefinder_alt_ok()) {
         gcs().send_text(MAV_SEVERITY_WARNING, "Terrain data (rangefinder) not available");
         return false;
     }
@@ -324,10 +324,10 @@ bool ModeGuided::guided_set_destination_posvel(const Vector3f& destination, cons
     update_time_ms = AP_HAL::millis();
     posvel_pos_target_cm = destination.topostype();
     posvel_vel_target_cms = velocity;
-    posvel_frame = frame;
+    posvel_frame = alt_frame;
 
 #if AP_RANGEFINDER_ENABLED
-    if (frame == Location::AltFrame::ABOVE_TERRAIN) {
+    if (alt_frame == Location::AltFrame::ABOVE_TERRAIN) {
         // target offset is seafloor position estimate
         position_control->set_pos_offset_target_z_cm(sub.rangefinder_state.rangefinder_terrain_offset_cm);
 
@@ -337,8 +337,8 @@ bool ModeGuided::guided_set_destination_posvel(const Vector3f& destination, cons
 #endif
 
 #if HAL_LOGGING_ENABLED
-    // log target TODO write frame to log
-    sub.Log_Write_GuidedTarget(sub.guided_mode, destination, velocity);
+    // log target
+    sub.Log_Write_GuidedTarget(sub.guided_mode, destination, velocity, alt_frame);
 #endif
 
     return true;
