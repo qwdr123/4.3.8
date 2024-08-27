@@ -17,6 +17,7 @@ extern const AP_HAL::HAL& hal;
 #define AP_MOUNT_SIYI_PITCH_P       1.50    // pitch controller P gain (converts pitch angle error to target rate)
 #define AP_MOUNT_SIYI_YAW_P         1.50    // yaw controller P gain (converts yaw angle error to target rate)
 #define AP_MOUNT_SIYI_TIMEOUT_MS    1000    // timeout for health and rangefinder readings
+#define AP_MOUNT_SIYI_THERM_TIMEOUT_MS  3000// timeout for temp min/max readings
 
 #define AP_MOUNT_SIYI_DEBUG 0
 #define debug(fmt, args ...) do { if (AP_MOUNT_SIYI_DEBUG) { GCS_SEND_TEXT(MAV_SEVERITY_INFO, "Siyi: " fmt, ## args); } } while (0)
@@ -81,6 +82,9 @@ void AP_Mount_Siyi::update()
         request_rangefinder_distance();
         _last_rangefinder_req_ms = now_ms;
     }
+
+    // request thermal min/max from ZT30 or ZT6
+    request_thermal_minmax();
 
     // send attitude to gimbal at 10Hz
     if (now_ms - _last_attitude_send_ms > 100) {
@@ -541,6 +545,23 @@ void AP_Mount_Siyi::process_packet()
         _current_rates_rads.z = -radians((int16_t)UINT16_VALUE(_msg_buff[_msg_buff_data_start+7], _msg_buff[_msg_buff_data_start+6]) * 0.1);   // yaw rate
         _current_rates_rads.y = radians((int16_t)UINT16_VALUE(_msg_buff[_msg_buff_data_start+9], _msg_buff[_msg_buff_data_start+8]) * 0.1);   // pitch rate
         _current_rates_rads.x = radians((int16_t)UINT16_VALUE(_msg_buff[_msg_buff_data_start+11], _msg_buff[_msg_buff_data_start+10]) * 0.1);  // roll rate
+        break;
+    }
+
+    case SiyiCommandId::GET_TEMP_FULL_IMAGE: {
+        if (_parsed_msg.data_bytes_received != 12) {
+#if AP_MOUNT_SIYI_DEBUG
+            unexpected_len = true;
+#endif
+            break;
+        }
+        _thermal.last_update_ms = AP_HAL::millis();
+        _thermal.max_C = (int16_t)UINT16_VALUE(_msg_buff[_msg_buff_data_start+1], _msg_buff[_msg_buff_data_start]) * 0.01;
+        _thermal.min_C = (int16_t)UINT16_VALUE(_msg_buff[_msg_buff_data_start+3], _msg_buff[_msg_buff_data_start+2]) * 0.01;
+        _thermal.max_pos.x = UINT16_VALUE(_msg_buff[_msg_buff_data_start+5], _msg_buff[_msg_buff_data_start+4]);
+        _thermal.max_pos.y = UINT16_VALUE(_msg_buff[_msg_buff_data_start+7], _msg_buff[_msg_buff_data_start+6]);
+        _thermal.min_pos.x = UINT16_VALUE(_msg_buff[_msg_buff_data_start+9], _msg_buff[_msg_buff_data_start+8]);
+        _thermal.min_pos.y = UINT16_VALUE(_msg_buff[_msg_buff_data_start+11], _msg_buff[_msg_buff_data_start+10]);
         break;
     }
 
@@ -1098,6 +1119,46 @@ void AP_Mount_Siyi::send_camera_settings(mavlink_channel_t chan) const
         NaN);               // focusLevel float, percentage from 0 to 100, NaN if unknown
 }
 
+// send camera thermal status message to GCS
+void AP_Mount_Siyi::send_camera_thermal_status(mavlink_channel_t chan) const
+{
+    const float NaN = nanf("0x4152");
+    const uint32_t now_ms = AP_HAL::millis();
+    bool timeout = now_ms - _thermal.last_update_ms > AP_MOUNT_SIYI_THERM_TIMEOUT_MS;
+
+    // send CAMERA_THERMAL_STATUS message
+    mavlink_msg_camera_thermal_status_send(
+        chan,
+        now_ms,             // time_boot_ms
+        _instance + 1,      // camera device id
+        timeout ? CAMERA_THERMAL_UNAVAILABLE : CAMERA_THERMAL_AVAILABLE,    // status (0:CAMERA_THERMAL_UNAVAILABLE or 1:CAMERA_THERMAL_AVAILABLE)
+        timeout ? NaN : _thermal.max_C,     // max in degC
+        timeout ? NaN : _thermal.max_pos.x, // max x position
+        timeout ? NaN : _thermal.max_pos.y, // max y position
+        timeout ? NaN : _thermal.min_C,     // min in degC
+        timeout ? NaN : _thermal.min_pos.x, // min x position
+        timeout ? NaN : _thermal.min_pos.y);// min y position
+}
+
+// change camera settings not normally used by autopilot
+// THERMAL_PALETTE: 0:WhiteHot, 2:Sepia, 3:IronBow, 4:Rainbow, 5:Night, 6:Aurora, 7:RedHot, 8:Jungle, 9:Medical, 10:BlackHot, 11:GloryHot
+// THERMAL_GAIN: 0:Low gain (50C ~ 550C), 1:High gain (-20C ~ 150C)
+// THERMAL_RAW_DATA: 0:Disable Raw Data (30fps), 1:Enable Raw Data (25fps)
+bool AP_Mount_Siyi::change_setting(CameraSetting setting, float value)
+{
+    switch (setting) {
+    case CameraSetting::THERMAL_PALETTE:
+        return send_1byte_packet(SiyiCommandId::SET_THERMAL_PALETTE, (uint8_t)value);
+    case CameraSetting::THERMAL_GAIN:
+        return send_1byte_packet(SiyiCommandId::SET_THERMAL_GAIN, (uint8_t)value);
+    case CameraSetting::THERMAL_RAW_DATA:
+        return send_1byte_packet(SiyiCommandId::SET_THERMAL_RAW_DATA, (uint8_t)value);
+    }
+
+    // invalid setting so return false
+    return false;
+}
+
 // get model name string. returns "Unknown" if hardware model is not yet known
 const char* AP_Mount_Siyi::get_model_name() const
 {
@@ -1171,6 +1232,25 @@ void AP_Mount_Siyi::check_firmware_version() const
             "Mount: Siyi running old camera fw (need v%u.%u.%u)",
             minimum_ver.camera.major, minimum_ver.camera.minor, minimum_ver.camera.patch
         );
+    }
+}
+
+// get thermal min/max if available at 5hz
+void AP_Mount_Siyi::request_thermal_minmax()
+{
+    // only supported on ZT6 and ZT30
+    if (_hardware_model != HardwareModel::ZT6 &&
+        _hardware_model != HardwareModel::ZT30) {
+        return;
+    }
+
+    // check for timeout
+    uint32_t now_ms = AP_HAL::millis();
+    if ((now_ms - _thermal.last_update_ms > AP_MOUNT_SIYI_THERM_TIMEOUT_MS) &&
+        (now_ms - _thermal.last_req_ms > AP_MOUNT_SIYI_THERM_TIMEOUT_MS)) {
+        // request thermal min/max at 5hz
+        send_1byte_packet(SiyiCommandId::GET_TEMP_FULL_IMAGE, 2);
+        _thermal.last_req_ms = now_ms;
     }
 }
 
