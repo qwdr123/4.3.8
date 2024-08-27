@@ -2344,6 +2344,21 @@ function vehicle:set_circle_rate(rate_dps) end
 ---@return number|nil
 function vehicle:get_circle_radius() end
 
+-- add an offset to vehicle's target position in autonomous modes
+---@param pos_offset_NED Vector3f_ud
+---@return boolean
+function vehicle:set_pos_offset(pos_offset_NED) end
+
+-- add an offset to vehicle's target velocity in autonomous modes
+---@param vel_offset_NED Vector3f_ud
+---@return boolean
+function vehicle:set_vel_offset(vel_offset_NED) end
+
+-- get position and velocity offsets to vehicle's target position in autonomous modes
+---@return Vector3f_ud|nil
+---@return Vector3f_ud|nil
+function vehicle:get_posvel_offset() end
+
 -- desc
 ---@param roll_deg number
 ---@param pitch_deg number
@@ -3506,7 +3521,7 @@ function mavlink:receive_chan() end
 ---@return boolean -- success
 function mavlink:send_chan(chan, msgid, message) end
 
--- Block a given MAV_CMD from being procceced by ArduPilot
+-- Block a given MAV_CMD from being processed by ArduPilot
 ---@param comand_id integer
 ---@return boolean
 function mavlink:block_command(comand_id) end
